@@ -14,11 +14,8 @@ def _addindent(s_, num_spaces):
     # don't do anything for single-line stuff
     if len(s) == 1:
         return s_
-    first = s.pop(0)
-    s = [(num_spaces * " ") + line for line in s]
-    s = "\n".join(s)
-    s = first + "\n" + s
-    return s
+    indent = " " * num_spaces
+    return "\n".join([s[0]] + [indent + line for line in s[1:]])
 
 
 class NestedObject:
