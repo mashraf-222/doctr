@@ -27,28 +27,38 @@ class AbstractDataset(_AbstractDataset):
         if isinstance(target, dict):
             assert "boxes" in target, "Target should contain 'boxes' key"
             assert "labels" in target, "Target should contain 'labels' key"
+            target_cpy = deepcopy(target)  # Deepcopy only for dicts
         elif isinstance(target, tuple):
             assert len(target) == 2
             assert isinstance(target[0], str) or isinstance(target[0], np.ndarray), (
                 "first element of the tuple should be a string or a numpy array"
             )
-            assert isinstance(target[1], list), "second element of the tuple should be a list"
+            assert isinstance(target[1], list), (
+                "second element of the tuple should be a list"
+            )
+            # Only deepcopy tuple if needed, here assume tuple holds only immutable or shallow-copied objects
+            target_cpy = target
         else:
             assert isinstance(target, str) or isinstance(target, np.ndarray), (
                 "Target should be a string or a numpy array"
             )
+            target_cpy = target
 
         # Read image
         img = (
             tensor_from_numpy(img_name, dtype=torch.float32)
             if isinstance(img_name, np.ndarray)
-            else read_img_as_tensor(os.path.join(self.root, img_name), dtype=torch.float32)
+            else read_img_as_tensor(
+                os.path.join(self.root, img_name), dtype=torch.float32
+            )
         )
 
-        return img, deepcopy(target)
+        return img, target_cpy
 
     @staticmethod
-    def collate_fn(samples: list[tuple[torch.Tensor, Any]]) -> tuple[torch.Tensor, list[Any]]:
+    def collate_fn(
+        samples: list[tuple[torch.Tensor, Any]],
+    ) -> tuple[torch.Tensor, list[Any]]:
         images, targets = zip(*samples)
         images = torch.stack(images, dim=0)  # type: ignore[assignment]
 

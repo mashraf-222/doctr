@@ -12,10 +12,18 @@ from torchvision.transforms.functional import to_tensor
 
 from doctr.utils.common_types import AbstractPath
 
-__all__ = ["tensor_from_pil", "read_img_as_tensor", "decode_img_as_tensor", "tensor_from_numpy", "get_img_shape"]
+__all__ = [
+    "tensor_from_pil",
+    "read_img_as_tensor",
+    "decode_img_as_tensor",
+    "tensor_from_numpy",
+    "get_img_shape",
+]
 
 
-def tensor_from_pil(pil_img: Image.Image, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+def tensor_from_pil(
+    pil_img: Image.Image, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     """Convert a PIL Image to a PyTorch tensor
 
     Args:
@@ -33,7 +41,9 @@ def tensor_from_pil(pil_img: Image.Image, dtype: torch.dtype = torch.float32) ->
     return img
 
 
-def read_img_as_tensor(img_path: AbstractPath, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+def read_img_as_tensor(
+    img_path: AbstractPath, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     """Read an image file as a PyTorch tensor
 
     Args:
@@ -44,13 +54,18 @@ def read_img_as_tensor(img_path: AbstractPath, dtype: torch.dtype = torch.float3
         decoded image as a tensor
     """
     if dtype not in (torch.uint8, torch.float16, torch.float32):
-        raise ValueError("insupported value for dtype")
+        raise ValueError("unsupported value for dtype")
 
     with Image.open(img_path, mode="r") as pil_img:
-        return tensor_from_pil(pil_img.convert("RGB"), dtype)
+        # Only convert if not already RGB to save time/memory
+        if pil_img.mode != "RGB":
+            pil_img = pil_img.convert("RGB")
+        return tensor_from_pil(pil_img, dtype)
 
 
-def decode_img_as_tensor(img_content: bytes, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+def decode_img_as_tensor(
+    img_content: bytes, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     """Read a byte stream as a PyTorch tensor
 
     Args:
@@ -67,7 +82,9 @@ def decode_img_as_tensor(img_content: bytes, dtype: torch.dtype = torch.float32)
         return tensor_from_pil(pil_img.convert("RGB"), dtype)
 
 
-def tensor_from_numpy(npy_img: np.ndarray, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+def tensor_from_numpy(
+    npy_img: np.ndarray, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     """Read an image file as a PyTorch tensor
 
     Args:
@@ -78,14 +95,16 @@ def tensor_from_numpy(npy_img: np.ndarray, dtype: torch.dtype = torch.float32) -
         same image as a tensor of shape (C, H, W)
     """
     if dtype not in (torch.uint8, torch.float16, torch.float32):
-        raise ValueError("insupported value for dtype")
+        raise ValueError("unsupported value for dtype")
 
     if dtype == torch.float32:
         img = to_tensor(npy_img)
     else:
         img = torch.from_numpy(npy_img)
         # put it from HWC to CHW format
-        img = img.permute((2, 0, 1)).contiguous()
+        img = img.permute((2, 0, 1))
+        if not img.is_contiguous():
+            img = img.contiguous()
         if dtype == torch.float16:
             # Switch to FP16
             img = img.to(dtype=torch.float16).div(255)
