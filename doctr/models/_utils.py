@@ -52,13 +52,16 @@ def estimate_orientation(
     Returns:
         the estimated angle of the page (clockwise, negative for left side rotation, positive for right side rotation)
     """
-    assert len(img.shape) == 3 and img.shape[-1] in [1, 3], f"Image shape {img.shape} not supported"
-    thresh = None
+    assert len(img.shape) == 3 and img.shape[-1] in [1, 3], (
+        f"Image shape {img.shape} not supported"
+    )
     # Convert image to grayscale if necessary
     if img.shape[-1] == 3:
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray_img = cv2.medianBlur(gray_img, 5)
-        thresh = cv2.threshold(gray_img, thresh=0, maxval=255, type=cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        thresh = cv2.threshold(
+            gray_img, thresh=0, maxval=255, type=cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )[1]
     else:
         thresh = img.astype(np.uint8)
 
@@ -67,33 +70,40 @@ def estimate_orientation(
         # We rotate the image to the general orientation which improves the detection
         # No expand needed bitmap is already padded
         thresh = rotate_image(thresh, -page_orientation)
-    else:  # That's only required if we do not work on the detection models bin map
+    else:
         # try to merge words in lines
-        (h, w) = img.shape[:2]
-        k_x = max(1, (floor(w / 100)))
-        k_y = max(1, (floor(h / 100)))
+        h, w = img.shape[:2]
+        k_x = max(1, floor(w / 100))
+        k_y = max(1, floor(h / 100))
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_x, k_y))
         thresh = cv2.dilate(thresh, kernel, iterations=1)
 
     # extract contours
     contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Filter & Sort contours
-    contours = sorted(
-        [contour for contour in contours if cv2.contourArea(contour) > lower_area],
-        key=get_max_width_length_ratio,
-        reverse=True,
-    )
+    # Filter & Sort contours in one pass
+    filtered_contours = [
+        contour for contour in contours if cv2.contourArea(contour) > lower_area
+    ]
+    if filtered_contours:
+        contours_sorted = sorted(
+            filtered_contours, key=get_max_width_length_ratio, reverse=True
+        )
+    else:
+        contours_sorted = []
 
     angles = []
-    for contour in contours[:n_ct]:
+    for contour in contours_sorted[:n_ct]:
         _, (w, h), angle = cv2.minAreaRect(contour)
-        if w / h > ratio_threshold_for_lines:  # select only contours with ratio like lines
+        if h == 0:
+            continue  # avoid division by zero
+        ratio = w / h
+        if ratio > ratio_threshold_for_lines:
             angles.append(angle)
-        elif w / h < 1 / ratio_threshold_for_lines:  # if lines are vertical, substract 90 degree
+        elif ratio < 1 / ratio_threshold_for_lines:
             angles.append(angle - 90)
 
-    if len(angles) == 0:
+    if not angles:
         estimated_angle = 0  # in case no angles is found
     else:
         median = -median_low(angles)
@@ -107,7 +117,11 @@ def estimate_orientation(
         # so in this case we prefer the general page orientation
         if abs(estimated_angle) == abs(page_orientation):
             return page_orientation
-        estimated_angle = estimated_angle if page_orientation == 0 else page_orientation + estimated_angle
+        estimated_angle = (
+            estimated_angle
+            if page_orientation == 0
+            else page_orientation + estimated_angle
+        )
         if estimated_angle > 180:
             estimated_angle -= 360
 
@@ -127,7 +141,10 @@ def rectify_crops(
     # Inverse predictions (if angle of +90 is detected, rotate by -90)
     orientations = [4 - pred if pred != 0 else 0 for pred in orientations]
     return (
-        [crop if orientation == 0 else np.rot90(crop, orientation) for orientation, crop in zip(orientations, crops)]
+        [
+            crop if orientation == 0 else np.rot90(crop, orientation)
+            for orientation, crop in zip(orientations, crops)
+        ]
         if len(orientations) > 0
         else []
     )
@@ -184,9 +201,13 @@ def invert_data_structure(
         dictionary of list when x is a list of dictionaries or a list of dictionaries when x is dictionary of lists
     """
     if isinstance(x, dict):
-        assert len({len(v) for v in x.values()}) == 1, "All the lists in the dictionary should have the same length."
+        assert len({len(v) for v in x.values()}) == 1, (
+            "All the lists in the dictionary should have the same length."
+        )
         return [dict(zip(x, t)) for t in zip(*x.values())]
     elif isinstance(x, list):
         return {k: [dic[k] for dic in x] for k in x[0]}
     else:
-        raise TypeError(f"Expected input to be either a dict or a list, got {type(input)} instead.")
+        raise TypeError(
+            f"Expected input to be either a dict or a list, got {type(input)} instead."
+        )
